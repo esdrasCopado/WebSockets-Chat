@@ -82,26 +82,7 @@ WebSockets Chat/
 └── README.md          # Este archivo
 ```
 
-## Seguridad
 
-⚠️ **IMPORTANTE para producción:**
-
-1. Cambia el `JWT_SECRET` en `index.js` por una clave segura
-2. Usa variables de entorno (archivo `.env`) para secretos
-3. Implementa una base de datos real (MongoDB, PostgreSQL, etc.) en lugar de almacenamiento en memoria
-4. Agrega HTTPS
-5. Implementa rate limiting
-6. Valida y sanitiza todas las entradas del usuario
-7. Agrega recuperación de contraseñas
-8. Implementa verificación de email
-
-## Características de Autenticación JWT
-
-- **Tokens JWT**: Duración de 7 días
-- **Cookies HTTP-only**: Mayor seguridad contra XSS
-- **Hash de contraseñas**: bcrypt con 10 rondas
-- **Middleware de autenticación**: Protege rutas sensibles
-- **Socket.IO autenticado**: Solo usuarios autenticados pueden conectarse
 
 ## API Endpoints
 
