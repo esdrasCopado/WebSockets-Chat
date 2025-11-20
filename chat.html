@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat en Tiempo Real</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <div class="chat-container">
+        <header class="chat-header">
+            <div class="header-left">
+                <h1>Chat en Tiempo Real</h1>
+                <div class="user-info">
+                    <span id="currentUser"></span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="user-count">
+                    <span id="userCount">0</span> usuarios conectados
+                </div>
+                <button id="logoutBtn" class="logout-btn">Cerrar Sesión</button>
+            </div>
+        </header>
+
+        <div class="messages-container">
+            <ul id="messages"></ul>
+        </div>
+
+        <!-- Preview de imagen -->
+        <div id="imagePreview" class="image-preview" style="display: none;">
+            <div class="preview-content">
+                <img id="previewImg" src="" alt="Preview">
+                <button id="cancelImage" class="cancel-btn">✕</button>
+            </div>
+        </div>
+
+        <form id="form" class="message-form">
+            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+            <button type="button" id="imageBtn" class="attach-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+            </button>
+            <input
+                id="input"
+                type="text"
+                placeholder="Escribe un mensaje..."
+                autocomplete="off"
+                maxlength="500"
+            />
+            <button type="submit" id="sendBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            </button>
+        </form>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var selectedImage = null;
+        var socket = null;
+        var currentUsername = '';
+
+        // Elementos del DOM
+        var form = document.getElementById('form');
+        var input = document.getElementById('input');
+        var messages = document.getElementById('messages');
+        var imageBtn = document.getElementById('imageBtn');
+        var imageInput = document.getElementById('imageInput');
+        var imagePreview = document.getElementById('imagePreview');
+        var previewImg = document.getElementById('previewImg');
+        var cancelImage = document.getElementById('cancelImage');
+        var logoutBtn = document.getElementById('logoutBtn');
+
+        // Función para obtener el token de las cookies
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) {
+                return parts.pop().split(';').shift();
+            }
+            return null;
+        }
+
+        // Verificar autenticación y obtener usuario actual
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/me');
+                if (!response.ok) {
+                    console.error('No autenticado');
+                    return;
+                }
+                const data = await response.json();
+                currentUsername = data.username;
+                document.getElementById('currentUser').textContent = `@${currentUsername}`;
+
+                // Conectar a Socket.IO con el token
+                const token = getCookie('token');
+
+                if (!token) {
+                    console.error('No se encontró el token en las cookies');
+                    return;
+                }
+
+                console.log('Conectando a Socket.IO con token...');
+                socket = io({
+                    auth: { token }
+                });
+
+                initializeSocketEvents();
+            } catch (error) {
+                console.error('Error en checkAuth:', error);
+            }
+        }
+
+        // Inicializar eventos de Socket.IO
+        function initializeSocketEvents() {
+            // Actualizar contador de usuarios
+            socket.on('user count', function(count) {
+                document.getElementById('userCount').textContent = count;
+            });
+
+            // Usuario se unió
+            socket.on('user joined', function(data) {
+                addSystemMessage(`${data.username} se unió al chat`);
+            });
+
+            // Usuario salió
+            socket.on('user left', function(data) {
+                addSystemMessage(`${data.username} salió del chat`);
+            });
+
+            // Recibir mensajes
+            socket.on('chat message', function(data) {
+                addMessage(data);
+            });
+
+            socket.on('connect_error', function(error) {
+                console.error('Error de conexión:', error);
+                alert('Error de autenticación. Por favor, inicia sesión nuevamente.');
+                window.location.href = '/login';
+            });
+        }
+
+        // Agregar mensaje del sistema
+        function addSystemMessage(text) {
+            var item = document.createElement('li');
+            item.classList.add('system-message');
+            item.textContent = text;
+            messages.appendChild(item);
+            scrollToBottom();
+        }
+
+        // Agregar mensaje al chat
+        function addMessage(data) {
+            var item = document.createElement('li');
+            item.classList.add('message-item');
+
+            // Determinar si es mensaje propio
+            if (data.username === currentUsername) {
+                item.classList.add('own-message');
+            }
+
+            // Crear contenedor del mensaje
+            var messageContainer = document.createElement('div');
+            messageContainer.classList.add('message-content');
+
+            // Agregar nombre de usuario
+            var usernameSpan = document.createElement('div');
+            usernameSpan.classList.add('message-username');
+            usernameSpan.textContent = data.username;
+            messageContainer.appendChild(usernameSpan);
+
+            // Agregar contenido del mensaje
+            if (data.type === 'image') {
+                var img = document.createElement('img');
+                img.src = data.content;
+                img.classList.add('chat-image');
+                img.alt = 'Imagen compartida';
+                messageContainer.appendChild(img);
+            } else {
+                var textDiv = document.createElement('div');
+                textDiv.classList.add('message-text');
+                textDiv.textContent = data.content;
+                messageContainer.appendChild(textDiv);
+            }
+
+            // Agregar timestamp
+            var timeSpan = document.createElement('div');
+            timeSpan.classList.add('message-time');
+            timeSpan.textContent = formatTime(new Date(data.timestamp));
+            messageContainer.appendChild(timeSpan);
+
+            item.appendChild(messageContainer);
+            messages.appendChild(item);
+            scrollToBottom();
+        }
+
+        // Formatear hora
+        function formatTime(date) {
+            return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Scroll automático
+        function scrollToBottom() {
+            messages.parentElement.scrollTop = messages.parentElement.scrollHeight;
+        }
+
+        // Cerrar sesión
+        logoutBtn.addEventListener('click', async function() {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('Error al cerrar sesión:', error);
+            }
+        });
+
+        // Abrir selector de imágenes
+        imageBtn.addEventListener('click', function() {
+            imageInput.click();
+        });
+
+        // Cuando se selecciona una imagen
+        imageInput.addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                // Validar tamaño (5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('La imagen es demasiado grande. Máximo 5MB.');
+                    return;
+                }
+
+                selectedImage = file;
+                var reader = new FileReader();
+                reader.onload = function(event) {
+                    previewImg.src = event.target.result;
+                    imagePreview.style.display = 'flex';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Cancelar imagen seleccionada
+        cancelImage.addEventListener('click', function() {
+            selectedImage = null;
+            imageInput.value = '';
+            imagePreview.style.display = 'none';
+        });
+
+        // Enviar mensaje o imagen
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            if (!socket) {
+                console.error('Socket no conectado');
+                alert('No estás conectado al chat. Por favor, recarga la página.');
+                return;
+            }
+
+            // Si hay una imagen seleccionada, subirla
+            if (selectedImage) {
+                var formData = new FormData();
+                formData.append('image', selectedImage);
+
+                try {
+                    var response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    var data = await response.json();
+
+                    if (data.imageUrl) {
+                        socket.emit('image message', data.imageUrl);
+                        // Limpiar preview
+                        selectedImage = null;
+                        imageInput.value = '';
+                        imagePreview.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Error al subir imagen:', error);
+                    alert('Error al subir la imagen');
+                }
+            }
+            // Si hay texto, enviarlo
+            else if (input.value) {
+                socket.emit('chat message', input.value);
+                input.value = '';
+            }
+        });
+
+        // Inicializar autenticación
+        checkAuth();
+    </script>
+</body>
+
+</html>
